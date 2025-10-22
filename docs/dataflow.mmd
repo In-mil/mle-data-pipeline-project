@@ -1,0 +1,7 @@
+flowchart LR
+  A[NYC Green Taxi Parquet 2025-01..03] -->|download_to_temp| B[(Local temp)]
+  B -->|upload_to_gcs.py| C[gs://nyc-taxi-pipeline-bucket/raw/]
+  C -->|etl_revenue_per_day.py (read from GCS)| D[DataFrame: trips]
+  D -->|groupby pickup_date + sum(total_amount)| E[DataFrame: revenue_per_day]
+  E -->|to_csv| F[(revenue_per_day_2025.csv)]
+  F -->|upload_to_gcs| G[gs://nyc-taxi-pipeline-bucket/results/revenue_per_day_2025.csv]
