@@ -1,44 +1,66 @@
+# etl_revenue_per_day.py
+import os
 import pandas as pd
 from google.cloud import storage
-from io import BytesIO
 
-# Dein Bucketname
-BUCKET_NAME = "nyc-taxi-pipeline-bucket"
 
-client = storage.Client()
+def _upload_to_gcs(bucket_name: str, local_path: str, dest_path: str) -> None:
+    """Upload a local file to GCS at gs://{bucket_name}/{dest_path}."""
+    client = storage.Client()  # uses ADC (gcloud auth application-default login)
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(dest_path)
+    blob.upload_from_filename(local_path)
+    print(f"✅ Uploaded result to GCS: gs://{bucket_name}/{dest_path}")
 
-def read_parquet_from_gcs(file_name):
-    """Reads a Parquet file directly from GCS"""
-    bucket = client.bucket(BUCKET_NAME)
-    blob = bucket.blob(f"raw/{file_name}")
-    data = blob.download_as_bytes()
-    return pd.read_parquet(BytesIO(data))
 
-def calculate_revenue_per_day():
-    """Calculates the revenue per day from all three months"""
-    all_data = []
-    for month in ["01", "02", "03"]:
-        file_name = f"green_tripdata_2025-{month}.parquet"
-        print(f"📥 Load {file_name} from GCS ...")
-        df = read_parquet_from_gcs(file_name)
+def calculate_revenue_per_day() -> str:
+    """
+    Load 2025-01..03 green taxi parquet files from GCS,
+    aggregate revenue per day, save CSV locally,
+    then upload CSV to GCS under results/.
+    Returns the GCS destination path of the CSV.
+    """
+    bucket = os.getenv("GCS_BUCKET", "nyc-taxi-pipeline-bucket")
+    raw_prefix = "raw"
+    result_prefix = "results"
+    local_csv = "revenue_per_day_2025.csv"
+    dest_csv = f"{result_prefix}/{local_csv}"
 
-        # Ensure the time column is correct
-        df["lpep_pickup_datetime"] = pd.to_datetime(df["lpep_pickup_datetime"])
+    # --- Load data from GCS (requires gcsfs) ---
+    months = ["01", "02", "03"]
+    dfs = []
+    for m in months:
+        path = f"gs://{bucket}/{raw_prefix}/green_tripdata_2025-{m}.parquet"
+        print(f"📥 Load green_tripdata_2025-{m}.parquet from GCS ...")
+        df = pd.read_parquet(path, storage_options={"token": "google_default"})
+        dfs.append(df)
 
-        # Extract the date
-        df["date"] = df["lpep_pickup_datetime"].dt.date
+    data = pd.concat(dfs, ignore_index=True)
 
-        # Calculate the sum per day
-        revenue = df.groupby("date")["total_amount"].sum().reset_index()
-        all_data.append(revenue)
+    # --- Basic cleaning / typing ---
+    # Green Taxi has pickup column "lpep_pickup_datetime" and fare columns like "total_amount"
+    data["lpep_pickup_datetime"] = pd.to_datetime(data["lpep_pickup_datetime"], errors="coerce")
+    data["pickup_date"] = data["lpep_pickup_datetime"].dt.date
 
-    # Merge all months
-    all_revenue = pd.concat(all_data)
-    result = all_revenue.groupby("date")["total_amount"].sum().reset_index()
+    # Ensure numeric
+    for col in ["total_amount"]:
+        if col in data.columns:
+            data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0)
 
-    # Save the result to a CSV file
-    result.to_csv("revenue_per_day_2025.csv", index=False)
-    print("✅ Saved as revenue_per_day_2025.csv")
+    # --- Aggregate revenue per day ---
+    rev = (
+        data.groupby("pickup_date", dropna=False)["total_amount"]
+        .sum()
+        .reset_index()
+        .rename(columns={"total_amount": "revenue"})
+        .sort_values("pickup_date")
+    )
 
-if __name__ == "__main__":
-    calculate_revenue_per_day()
+    # --- Save locally ---
+    rev.to_csv(local_csv, index=False)
+    print(f"✅ Saved as {local_csv}")
+
+    # --- Upload CSV to GCS ---
+    _upload_to_gcs(bucket_name=bucket, local_path=local_csv, dest_path=dest_csv)
+
+    return f"gs://{bucket}/{dest_csv}"
