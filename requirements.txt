@@ -1,0 +1,15 @@
+prefect
+prefect-sqlalchemy
+prefect-dbt
+pandas
+pyarrow
+sqlalchemy
+psycopg2-binary
+click
+dbt-postgres
+pyspark~=3.4.0
+jupyter
+faust-streaming
+google-cloud-storage
+kafka-python
+wget

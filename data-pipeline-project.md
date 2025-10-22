@@ -14,6 +14,10 @@ Bonus task if you have the time:
 ## Questions:
 
 1. What are the steps you took to complete the project?
+✅ Du bist eingeloggt
+✅ Dein Projekt ist gesetzt
+✅ Dein Bucket existiert
+✅ Dein Terminal ist verbunden
 2. What are the challenges you faced?
 3. What are the things you would do differently if you had more time?
 
