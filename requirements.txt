@@ -13,3 +13,4 @@ faust-streaming
 google-cloud-storage
 kafka-python
 wget
+prefect-github
