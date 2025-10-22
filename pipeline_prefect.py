@@ -1,6 +1,7 @@
 from prefect import flow, task
 from upload_to_gcs import download_and_upload
 from etl_revenue_per_day import calculate_revenue_per_day
+from prefect.filesystems import GitHub  # ✅ neuer Import für Prefect 3.4
 
 
 @task
@@ -20,14 +21,18 @@ def main_flow():
 
 
 if __name__ == "__main__":
-    # Deployment direkt aus dem Flow heraus erstellen
+    # Richtige GitHub-Storage-Definition
+    repo = GitHub(
+        repository="in-mil/mle-data-pipeline-project",  # dein Repo-Name
+        reference="main",  # Branch
+        access_token=None  # nur nötig bei privaten Repos
+    )
+
+    # Deployment anlegen und in Prefect Cloud registrieren
     main_flow.deploy(
         name="nyc-taxi-flow",
         work_pool_name="cloud-pool",
         description="NYC Green Taxi ETL – revenue per day",
+        storage=repo,
+        image="prefecthq/prefect:3-latest"
     )
-
-    # Optional: lokalen Testlauf starten
-    # main_flow()
-
-#execute the script with: python pipeline_prefect.py
